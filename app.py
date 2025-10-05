@@ -11,7 +11,14 @@ Supported platforms:
 - Generic WSGI servers
 """
 
-from src.interview_prep_backend.main import app
+import sys
+from pathlib import Path
+
+# Add src directory to Python path
+src_path = Path(__file__).parent / "src"
+sys.path.insert(0, str(src_path))
+
+from interview_prep_backend.main import app
 
 # For WSGI servers (Gunicorn, etc.)
 # The app variable is automatically discovered
