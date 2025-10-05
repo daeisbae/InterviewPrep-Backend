@@ -6,7 +6,7 @@ import httpx
 
 from interview_prep_backend.config import get_settings
 
-_DEEPSEEK_URL = "https://api.deepseek.com/text/generation"
+_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 
 
 async def generate_coaching_line(prompt: str, *, tone: str = "supportive") -> str:
