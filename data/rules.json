@@ -1,0 +1,59 @@
+{
+  "states": [
+    {
+      "id": "high_anxiety",
+      "name": "High Anxiety",
+      "default": false,
+      "thresholds": [
+        {"metric": "anxiety", "operator": ">=", "value": 0.65}
+      ],
+      "response": {
+        "id": "high_anxiety",
+        "subtitle": "Let’s slow your pace and breathe before the next point.",
+        "tip": "Take one calm breath, lower your shoulders, and answer with two short sentences.",
+        "tts_text": "Take a slow breath and speak in two short sentences to stay composed."
+      }
+    },
+    {
+      "id": "low_confidence",
+      "name": "Low Confidence",
+      "default": false,
+      "thresholds": [
+        {"metric": "confidence", "operator": "<", "value": 0.45}
+      ],
+      "response": {
+        "id": "low_confidence",
+        "subtitle": "Highlight an accomplishment to boost clarity.",
+        "tip": "Lead with a result you achieved, then describe one action you took.",
+        "tts_text": "Lead with a clear result you achieved and follow with one action that made it happen."
+      }
+    },
+    {
+      "id": "steady_growth",
+      "name": "Steady Growth",
+      "default": false,
+      "thresholds": [
+        {"metric": "confidence", "operator": ">=", "value": 0.55},
+        {"metric": "anxiety", "operator": "<", "value": 0.5}
+      ],
+      "response": {
+        "id": "steady_growth",
+        "subtitle": "Great control—now emphasize impact.",
+        "tip": "Frame your next answer as Challenge, Action, Result for extra punch.",
+        "tts_text": "Keep this steady energy and walk through Challenge, Action, Result next."
+      }
+    },
+    {
+      "id": "default_support",
+      "name": "Supportive Baseline",
+      "default": true,
+      "thresholds": [],
+      "response": {
+        "id": "default_support",
+        "subtitle": "You’re doing fine—stay present and focused.",
+        "tip": "Answer with one key message, a supporting detail, and a quick recap.",
+        "tts_text": "You’re doing great. Share one key message, a supporting detail, and a quick recap."
+      }
+    }
+  ]
+}
