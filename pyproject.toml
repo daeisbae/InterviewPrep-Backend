@@ -19,6 +19,7 @@ dependencies = [
   "python-multipart>=0.0.20",
   "pydantic-settings>=2.11.0",
   "openai>=1.0.0,<2.0.0",
+  "mangum>=0.17.0",
 ]
 
 [project.optional-dependencies]
