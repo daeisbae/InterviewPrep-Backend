@@ -12,6 +12,7 @@ class Settings(BaseModel):
     aws_region: Optional[str] = Field(default=None, alias="AWS_REGION")
     aws_access_key_id: Optional[str] = Field(default=None, alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: Optional[str] = Field(default=None, alias="AWS_SECRET_ACCESS_KEY")
+    aws_s3_bucket: Optional[str] = Field(default=None, alias="AWS_S3_BUCKET")
     coaching_rules_path: str = Field(default="data/rules.json", alias="COACHING_RULES_PATH")
     filler_words: List[str] = Field(
         default_factory=lambda: [

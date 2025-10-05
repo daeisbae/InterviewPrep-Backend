@@ -4,7 +4,7 @@ from typing import Optional
 
 import httpx
 
-from app.config import get_settings
+from interview_prep_backend.config import get_settings
 
 _DEEPSEEK_URL = "https://api.deepseek.com/text/generation"
 

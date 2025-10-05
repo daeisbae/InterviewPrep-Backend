@@ -1,5 +1,5 @@
-from app.schemas import CoachingScore
-from app.services.state_machine import load_state_machine
+from src.schemas import CoachingScore
+from src.services.state_machine import load_state_machine
 
 
 def test_high_anxiety_state(tmp_path):

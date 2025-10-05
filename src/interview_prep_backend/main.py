@@ -6,9 +6,9 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import get_settings
-from app.routers import interview
-from app.schemas import HealthResponse
+from interview_prep_backend.config import get_settings
+from interview_prep_backend.routers import interview
+from interview_prep_backend.schemas import HealthResponse
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,3 +40,8 @@ def health() -> HealthResponse:
 def config_snapshot() -> Any:
     snapshot = settings.model_dump(exclude={"deepseek_api_key", "aws_access_key_id", "aws_secret_access_key"})
     return snapshot
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("interview_prep_backend.main:app", host="0.0.0.0", port=8000, reload=True)

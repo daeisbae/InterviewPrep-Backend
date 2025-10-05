@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import List
 
-from app.config import get_settings
-from app.schemas import BrowserSignalPayload, CoachingScore
+from interview_prep_backend.config import get_settings
+from interview_prep_backend.schemas import BrowserSignalPayload, CoachingScore
 
 
 def compute_scores(payload: BrowserSignalPayload) -> CoachingScore:

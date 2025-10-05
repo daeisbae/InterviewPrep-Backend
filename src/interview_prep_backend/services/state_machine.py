@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from app.config import get_settings
-from app.schemas import CoachingResponse, CoachingScore
+from interview_prep_backend.config import get_settings
+from interview_prep_backend.schemas import CoachingResponse, CoachingScore
 
 
 class Threshold(BaseModel):

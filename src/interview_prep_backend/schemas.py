@@ -65,3 +65,48 @@ class CoachingResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     environment: str
+
+
+class UploadUrlRequest(BaseModel):
+    file_type: str = Field(description="video or audio")
+    content_type: str = Field(default="video/webm", description="MIME type")
+
+
+class UploadUrlResponse(BaseModel):
+    upload_url: str
+    file_key: str
+    expires_in: int = 3600
+
+
+class AnalysisRequest(BaseModel):
+    file_key: str
+
+
+class FacialAnalysis(BaseModel):
+    engagement: float = Field(ge=0.0, le=1.0)
+    positivity: float = Field(ge=0.0, le=1.0)
+    anxiety_hint: float = Field(ge=0.0, le=1.0)
+
+
+class TranscriptAnalysis(BaseModel):
+    full_text: str
+    filler_ratio: float = Field(ge=0.0, le=1.0)
+    filler_hits: int
+    mumble_score: float = Field(ge=0.0, le=1.0)
+    segments: List[TranscriptSegment] = Field(default_factory=list)
+
+
+class CoachingAdvice(BaseModel):
+    tip: str
+    confidence_score: float = Field(ge=0.0, le=1.0)
+    anxiety_score: float = Field(ge=0.0, le=1.0)
+    recommendations: List[str]
+
+
+class AnalysisResponse(BaseModel):
+    file_key: str
+    status: str
+    facial_analysis: Optional[FacialAnalysis] = None
+    transcript_analysis: Optional[TranscriptAnalysis] = None
+    coaching_advice: Optional[CoachingAdvice] = None
+    processing_time_ms: Optional[float] = None

@@ -14,7 +14,8 @@ dependencies = [
   "uvicorn[standard]>=0.30.0,<1.0.0",
   "httpx>=0.27.0,<0.28.0",
   "pydantic>=2.7.0,<3.0.0",
-  "python-dotenv>=1.0.1,<2.0.0"
+  "python-dotenv>=1.0.1,<2.0.0",
+  "boto3>=1.40.45",
 ]
 
 [project.optional-dependencies]
@@ -29,3 +30,9 @@ aws = [
 
 [project.urls]
 "Source" = "https://github.com/example/interview-prep-backend"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/interview_prep_backend"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/interview_prep_backend", "pyproject.toml", "README.md", "data"]

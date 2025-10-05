@@ -4,7 +4,7 @@ import time
 from typing import Dict, Optional
 from uuid import uuid4
 
-from app.schemas import CoachingResponse
+from interview_prep_backend.schemas import CoachingResponse
 
 
 class SessionStore:

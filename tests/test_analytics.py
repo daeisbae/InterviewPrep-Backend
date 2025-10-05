@@ -1,10 +1,10 @@
-from app.schemas import (
+from src.schemas import (
     BrowserSignalPayload,
     FacialMetrics,
     TranscriptSegment,
     VoiceMetrics,
 )
-from app.services.analytics import compute_scores, extract_filler_segments
+from src.services.analytics import compute_scores, extract_filler_segments
 
 
 def payload_factory(**overrides):
