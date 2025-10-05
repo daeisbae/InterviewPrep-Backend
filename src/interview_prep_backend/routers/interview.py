@@ -38,12 +38,6 @@ async def analyze_interview(file: UploadFile = File(...)) -> AnalysisResponse:
     settings = get_settings()
     start_time = time.time()
     
-    if not settings.enable_external_apis:
-        raise HTTPException(
-            status_code=400,
-            detail="External APIs are disabled. Set ENABLE_EXTERNAL_APIS=true in your environment."
-        )
-    
     # Validate file type
     if not file.content_type or not file.content_type.startswith(("video/", "audio/")):
         raise HTTPException(

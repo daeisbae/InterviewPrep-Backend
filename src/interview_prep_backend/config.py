@@ -1,11 +1,11 @@
 from functools import lru_cache
 from typing import List, Optional
 
-from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
     environment: str = Field(default="development", alias="ENVIRONMENT")
     deepseek_api_key: Optional[str] = Field(default=None, alias="DEEPSEEK_API_KEY")
     deepseek_model: str = Field(default="deepseek-chat", alias="DEEPSEEK_MODEL")
@@ -29,13 +29,12 @@ class Settings(BaseModel):
     high_anxiety_threshold: float = Field(default=0.6, alias="HIGH_ANXIETY_THRESHOLD")
     enable_external_apis: bool = Field(default=False, alias="ENABLE_EXTERNAL_APIS")
 
-    model_config = {
-        "populate_by_name": True,
-        "arbitrary_types_allowed": True,
-    }
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+        populate_by_name = True
 
 
 @lru_cache
 def get_settings() -> Settings:
-    load_dotenv()
-    return Settings()  # type: ignore[arg-type]
+    return Settings()
