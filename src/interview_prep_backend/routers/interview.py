@@ -38,23 +38,31 @@ async def analyze_interview(file: UploadFile = File(...)) -> AnalysisResponse:
     settings = get_settings()
     start_time = time.time()
     
-    # Validate file type
+    # Validate file type and extract extension
     if not file.content_type or not file.content_type.startswith(("video/", "audio/")):
         raise HTTPException(
             status_code=400,
             detail=f"Invalid file type: {file.content_type}. Must be video/* or audio/*"
         )
     
+    # Get file extension
+    filename = file.filename or "interview.mov"
+    file_extension = filename.split('.')[-1].lower() if '.' in filename else 'mov'
+    
+    # Warn about WebM format (not supported by Rekognition)
+    if file_extension == 'webm':
+        logger.warning("WebM format detected - Rekognition will fail. Recommend MOV or MP4.")
+    
     # Step 1: Upload to S3
     try:
-        logger.info(f"Uploading file: {file.filename} ({file.content_type})")
+        logger.info(f"Uploading file: {filename} ({file.content_type}, extension: {file_extension})")
         file_content = await file.read()
         file_key = aws_providers.upload_file_to_s3(
             file_content=file_content,
-            content_type=file.content_type or "video/webm",
-            original_filename=file.filename or "interview.webm"
+            content_type=file.content_type or f"video/{file_extension}",
+            original_filename=filename
         )
-        logger.info(f"File uploaded to S3: {file_key}")
+        logger.info(f"File uploaded to S3: {file_key} (format: {file_extension})")
     except Exception as e:
         logger.error(f"S3 upload failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
@@ -66,8 +74,8 @@ async def analyze_interview(file: UploadFile = File(...)) -> AnalysisResponse:
     # Step 2: Run facial analysis and transcription in parallel
     try:
         logger.info(f"Starting AWS analysis for {file_key}")
-        facial_task = aws_providers.analyze_video_with_rekognition(file_key)
-        transcript_task = aws_providers.transcribe_audio_from_s3(file_key)
+        facial_task = aws_providers.analyze_video_with_rekognition(file_key, file_extension)
+        transcript_task = aws_providers.transcribe_audio_from_s3(file_key, file_extension)
         
         facial_data = await facial_task
         transcript_data = await transcript_task
@@ -79,8 +87,11 @@ async def analyze_interview(file: UploadFile = File(...)) -> AnalysisResponse:
             facial_result = FacialAnalysis(
                 engagement=facial_data["engagement"],
                 positivity=facial_data["positivity"],
-                anxiety_hint=facial_data["anxiety_hint"]
+                anxiety_hint=facial_data["anxiety_hint"],
+                confidence=facial_data.get("confidence", 0.5),
+                emotions=facial_data.get("emotions", {})
             )
+            logger.info(f"Facial emotions detected: {facial_data.get('emotions', {})}")
         
         # Process transcript
         if transcript_data and transcript_data.get("status") == "COMPLETED":
@@ -97,13 +108,24 @@ async def analyze_interview(file: UploadFile = File(...)) -> AnalysisResponse:
             )
             
             # Generate coaching advice using LLM
-            confidence = 1.0 - (transcript_result.mumble_score * 0.5)
+            confidence = facial_result.confidence if facial_result else 1.0 - (transcript_result.mumble_score * 0.5)
             anxiety = facial_result.anxiety_hint if facial_result else 0.5
+            
+            # Build detailed prompt with emotion data
+            emotion_context = ""
+            if facial_result and facial_result.emotions:
+                top_emotions = sorted(
+                    facial_result.emotions.items(),
+                    key=lambda x: x[1],
+                    reverse=True
+                )[:3]
+                emotion_context = f"- Top Emotions: {', '.join(f'{e[0].title()}: {e[1]:.1f}%' for e in top_emotions)}\n"
             
             prompt = (
                 f"Interview Performance Analysis:\n"
                 f"- Confidence Score: {confidence:.2f}\n"
                 f"- Anxiety Level: {anxiety:.2f}\n"
+                f"{emotion_context}"
                 f"- Filler Word Ratio: {transcript_result.filler_ratio:.2%}\n"
                 f"- Transcript: {full_text[:500]}\n\n"
                 f"Provide specific coaching tips and recommendations."

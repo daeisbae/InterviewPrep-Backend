@@ -86,6 +86,11 @@ class FacialAnalysis(BaseModel):
     engagement: float = Field(ge=0.0, le=1.0)
     positivity: float = Field(ge=0.0, le=1.0)
     anxiety_hint: float = Field(ge=0.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0, description="Overall confidence level based on facial expressions")
+    emotions: dict = Field(
+        default_factory=dict,
+        description="Raw emotion scores: happy, calm, fear, confused, sad, angry, surprised, disgusted"
+    )
 
 
 class TranscriptAnalysis(BaseModel):

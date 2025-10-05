@@ -144,6 +144,9 @@ def upload_file_to_s3(file_content: bytes, content_type: str, original_filename:
     """Upload file directly to S3 from server and return the file key."""
     settings = get_settings()
     if not settings.aws_s3_bucket:
+        print("Warning: ", settings.aws_s3_bucket)
+        print("Warning: ", settings.aws_access_key_id)
+        print("Warning: ", settings.aws_secret_access_key)  
         raise RuntimeError("AWS S3 bucket is not configured.")
     
     boto3 = _import_boto3()
@@ -188,76 +191,172 @@ async def get_s3_object(file_key: str) -> bytes:
     return response['Body'].read()
 
 
-async def analyze_video_with_rekognition(file_key: str) -> Optional[Dict[str, float]]:
-    """Analyze video from S3 using AWS Rekognition."""
+async def analyze_video_with_rekognition(file_key: str, file_extension: str = "mov") -> Optional[Dict[str, Any]]:
+    """Analyze video from S3 using AWS Rekognition.
+    
+    Supported formats: MOV, MPEG-4, MP4, AVI (WebM is NOT supported)
+    """
     settings = get_settings()
     if not settings.aws_s3_bucket:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("AWS S3 bucket not configured for Rekognition")
+        return None
+    
+    # Check for unsupported formats
+    unsupported_formats = ['webm', 'ogg', 'flac', 'wav', 'mp3']
+    if file_extension.lower() in unsupported_formats:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Rekognition does not support {file_extension.upper()} format. Supported: MOV, MP4, AVI, MPEG-4")
         return None
     
     client = _build_client("rekognition")
     if client is None:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("Failed to build Rekognition client - check boto3 installation and AWS credentials")
         return None
     
     loop = asyncio.get_event_loop()
     
-    # Start face detection job
-    job_response = await loop.run_in_executor(
-        None,
-        lambda: client.start_face_detection(
-            Video={'S3Object': {'Bucket': settings.aws_s3_bucket, 'Name': file_key}},
-            FaceAttributes='ALL'
-        )
-    )
-    
-    job_id = job_response['JobId']
-    
-    # Poll for completion (simplified - in production, use SNS notifications)
-    max_attempts = 60
-    for _ in range(max_attempts):
-        result = await loop.run_in_executor(
-            None,
-            lambda: client.get_face_detection(JobId=job_id)
-        )
+    try:
+        # Start face detection job
+        def start_detection():
+            return client.start_face_detection(
+                Video={'S3Object': {'Bucket': settings.aws_s3_bucket, 'Name': file_key}},
+                FaceAttributes='ALL'
+            )
         
-        status = result['JobStatus']
-        if status == 'SUCCEEDED':
-            faces = result.get('Faces', [])
-            if not faces:
-                return None
-            
-            # Aggregate emotions across all detected faces
-            all_emotions = []
-            for face in faces:
-                if 'Face' in face and 'Emotions' in face['Face']:
-                    all_emotions.extend(face['Face']['Emotions'])
-            
-            if not all_emotions:
-                return None
-            
-            # Calculate average scores
-            happiness = sum(_emotion_score([e], "HAPPY") for e in all_emotions) / len(all_emotions)
-            calm = sum(_emotion_score([e], "CALM") for e in all_emotions) / len(all_emotions)
-            nervous = sum(_emotion_score([e], "FEAR") + _emotion_score([e], "CONFUSED") for e in all_emotions) / len(all_emotions)
-            
-            engagement = min(1.0, (happiness + calm) / 200 + 0.3)
-            positivity = min(1.0, happiness / 100)
-            anxiety_hint = min(1.0, nervous / 100)
-            
-            return {
-                "engagement": engagement,
-                "positivity": positivity,
-                "anxiety_hint": anxiety_hint,
-            }
-        elif status == 'FAILED':
-            return None
+        job_response = await loop.run_in_executor(None, start_detection)
+        job_id = job_response['JobId']
         
-        await asyncio.sleep(2)
-    
-    return None
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Rekognition job started: {job_id} - Video analysis typically takes 30-120 seconds, please wait...")
+        
+        # Poll for completion with progressive backoff
+        # AWS Rekognition Video typically takes 30-120 seconds for short videos
+        max_attempts = 60  # ~4-5 minutes max with progressive intervals
+        poll_interval = 4  # Start with 4 seconds
+        
+        for attempt in range(max_attempts):
+            def get_detection():
+                return client.get_face_detection(JobId=job_id)
+            
+            result = await loop.run_in_executor(None, get_detection)
+            status = result['JobStatus']
+            
+            # Log less frequently to reduce noise (every 5 attempts after attempt 5)
+            if attempt < 5 or attempt % 5 == 0:
+                elapsed_time = attempt * poll_interval
+                logger.info(f"Rekognition job status: {status} (elapsed: {elapsed_time}s, attempt {attempt + 1}/{max_attempts})")
+            
+            if status == 'SUCCEEDED':
+                faces = result.get('Faces', [])
+                if not faces:
+                    logger.warning("Rekognition succeeded but no faces detected")
+                    return None
+                
+                logger.info(f"Found {len(faces)} face detections")
+                
+                # Aggregate emotions across all detected faces
+                all_emotions = []
+                for face in faces:
+                    if 'Face' in face and 'Emotions' in face['Face']:
+                        all_emotions.extend(face['Face']['Emotions'])
+                
+                if not all_emotions:
+                    logger.warning("No emotions found in face detections")
+                    return None
+                
+                # Calculate average scores for all emotion types
+                happiness_scores = [_emotion_score([e], "HAPPY") for e in all_emotions]
+                calm_scores = [_emotion_score([e], "CALM") for e in all_emotions]
+                fear_scores = [_emotion_score([e], "FEAR") for e in all_emotions]
+                confused_scores = [_emotion_score([e], "CONFUSED") for e in all_emotions]
+                sad_scores = [_emotion_score([e], "SAD") for e in all_emotions]
+                angry_scores = [_emotion_score([e], "ANGRY") for e in all_emotions]
+                surprised_scores = [_emotion_score([e], "SURPRISED") for e in all_emotions]
+                disgusted_scores = [_emotion_score([e], "DISGUSTED") for e in all_emotions]
+                
+                # Average each emotion type
+                happiness = sum(happiness_scores) / len(all_emotions) if all_emotions else 0
+                calm = sum(calm_scores) / len(all_emotions) if all_emotions else 0
+                fear = sum(fear_scores) / len(all_emotions) if all_emotions else 0
+                confused = sum(confused_scores) / len(all_emotions) if all_emotions else 0
+                sad = sum(sad_scores) / len(all_emotions) if all_emotions else 0
+                angry = sum(angry_scores) / len(all_emotions) if all_emotions else 0
+                surprised = sum(surprised_scores) / len(all_emotions) if all_emotions else 0
+                disgusted = sum(disgusted_scores) / len(all_emotions) if all_emotions else 0
+                
+                # Calculate composite metrics for interview performance
+                nervous = fear + confused  # Nervousness = fear + confusion
+                negative = sad + angry + disgusted  # Negative emotions
+                
+                # Engagement: High when calm, happy, or surprised (showing interest)
+                engagement = min(1.0, (happiness + calm + surprised * 0.5) / 200 + 0.3)
+                
+                # Positivity: Happy expressions minus negative emotions
+                positivity = min(1.0, max(0.0, (happiness - negative * 0.5) / 100))
+                
+                # Anxiety: Fear + confusion + negative emotions
+                anxiety_hint = min(1.0, (nervous + negative * 0.3) / 100)
+                
+                # Confidence: Inverse of anxiety, boosted by calm and happiness
+                confidence = min(1.0, max(0.0, (calm + happiness * 0.5 - nervous * 0.5) / 100))
+                
+                logger.info(
+                    f"Emotion analysis - Happy: {happiness:.1f}%, Calm: {calm:.1f}%, "
+                    f"Fear: {fear:.1f}%, Confused: {confused:.1f}%, Sad: {sad:.1f}%"
+                )
+                logger.info(
+                    f"Metrics - Engagement: {engagement:.2f}, Positivity: {positivity:.2f}, "
+                    f"Anxiety: {anxiety_hint:.2f}, Confidence: {confidence:.2f}"
+                )
+                
+                return {
+                    "engagement": engagement,
+                    "positivity": positivity,
+                    "anxiety_hint": anxiety_hint,
+                    "confidence": confidence,
+                    # Include raw emotion scores for detailed analysis
+                    "emotions": {
+                        "happy": round(happiness, 2),
+                        "calm": round(calm, 2),
+                        "fear": round(fear, 2),
+                        "confused": round(confused, 2),
+                        "sad": round(sad, 2),
+                        "angry": round(angry, 2),
+                        "surprised": round(surprised, 2),
+                        "disgusted": round(disgusted, 2),
+                    }
+                }
+            elif status == 'FAILED':
+                logger.error(f"Rekognition job failed: {result.get('StatusMessage', 'Unknown error')}")
+                return None
+            elif status == 'IN_PROGRESS':
+                # Progressive backoff: increase wait time after 15 attempts
+                if attempt >= 15:
+                    poll_interval = 6  # Increase to 6 seconds after ~1 minute
+            
+            await asyncio.sleep(poll_interval)
+        
+        logger.error(f"Rekognition job timed out after {max_attempts} attempts")
+        return None
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Rekognition analysis error: {type(e).__name__}: {str(e)}")
+        return None
 
 
-async def transcribe_audio_from_s3(file_key: str) -> Optional[Dict[str, Any]]:
-    """Transcribe audio/video from S3 using AWS Transcribe."""
+async def transcribe_audio_from_s3(file_key: str, file_extension: str = "mov") -> Optional[Dict[str, Any]]:
+    """Transcribe audio/video from S3 using AWS Transcribe.
+    
+    Supported formats: MOV, MP4, MP3, WAV, FLAC, WebM, AMR, OGG
+    """
     settings = get_settings()
     if not settings.aws_s3_bucket:
         return None
@@ -269,6 +368,23 @@ async def transcribe_audio_from_s3(file_key: str) -> Optional[Dict[str, Any]]:
     job_name = f"transcribe-{uuid.uuid4()}"
     media_uri = f"s3://{settings.aws_s3_bucket}/{file_key}"
     
+    # Map file extensions to AWS Transcribe MediaFormat
+    format_mapping = {
+        'mp3': 'mp3',
+        'mp4': 'mp4',
+        'mov': 'mp4',  # MOV uses mp4 format
+        'wav': 'wav',
+        'flac': 'flac',
+        'webm': 'webm',
+        'amr': 'amr',
+        'ogg': 'ogg'
+    }
+    media_format = format_mapping.get(file_extension.lower(), 'mp4')
+    
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting transcription with MediaFormat={media_format} for file extension={file_extension}")
+    
     loop = asyncio.get_event_loop()
     
     # Start transcription job
@@ -277,22 +393,34 @@ async def transcribe_audio_from_s3(file_key: str) -> Optional[Dict[str, Any]]:
         lambda: client.start_transcription_job(
             TranscriptionJobName=job_name,
             LanguageCode="en-US",
-            MediaFormat="webm",
+            MediaFormat=media_format,
             Media={"MediaFileUri": media_uri},
         )
     )
     
-    # Poll for completion (simplified - in production, use SNS notifications)
-    max_attempts = 60
-    for _ in range(max_attempts):
+    logger.info(f"Transcription job started: {job_name}")
+    
+    # Poll for completion with progressive backoff
+    # AWS Transcribe typically takes 30-180 seconds depending on audio length
+    max_attempts = 60  # ~4-5 minutes max with progressive intervals
+    poll_interval = 4  # Start with 4 seconds
+    
+    for attempt in range(max_attempts):
         result = await loop.run_in_executor(
             None,
             lambda: client.get_transcription_job(TranscriptionJobName=job_name)
         )
         
         status = result['TranscriptionJob']['TranscriptionJobStatus']
+        
+        # Log less frequently to reduce noise
+        if attempt < 5 or attempt % 5 == 0:
+            elapsed_time = attempt * poll_interval
+            logger.info(f"Transcription job status: {status} (elapsed: {elapsed_time}s, attempt {attempt + 1}/{max_attempts})")
+        
         if status == 'COMPLETED':
             transcript_uri = result['TranscriptionJob']['Transcript']['TranscriptFileUri']
+            logger.info(f"Transcription completed successfully")
             
             # Download and parse transcript (you'd need to fetch the JSON from the URI)
             # For now, returning a simplified structure
@@ -302,9 +430,14 @@ async def transcribe_audio_from_s3(file_key: str) -> Optional[Dict[str, Any]]:
                 "transcript_uri": transcript_uri,
             }
         elif status == 'FAILED':
+            logger.error(f"Transcription job failed: {result['TranscriptionJob'].get('FailureReason', 'Unknown error')}")
             return None
+        elif status == 'IN_PROGRESS':
+            # Progressive backoff: increase wait time after 15 attempts
+            if attempt >= 15:
+                poll_interval = 6  # Increase to 6 seconds after ~1 minute
         
-        await asyncio.sleep(2)
+        await asyncio.sleep(poll_interval)
     
     return None
 

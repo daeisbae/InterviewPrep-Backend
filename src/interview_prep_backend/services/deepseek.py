@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-import httpx
+from openai import AsyncOpenAI
 
 from interview_prep_backend.config import get_settings
-
-_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 
 
 async def generate_coaching_line(prompt: str, *, tone: str = "supportive") -> str:
@@ -14,29 +12,32 @@ async def generate_coaching_line(prompt: str, *, tone: str = "supportive") -> st
     if not settings.enable_external_apis or not settings.deepseek_api_key:
         return _fallback_response(prompt, tone)
 
-    headers = {
-        "Authorization": f"Bearer {settings.deepseek_api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": settings.deepseek_model,
-        "prompt": (
-            "You are an empathetic interview coach. Provide one concise, actionable tip based on the prompt."
-            f" Maintain a {tone} tone.\nPrompt: {prompt}"
-        ),
-        "max_tokens": 120,
-        "temperature": 0.6,
-    }
+    client = AsyncOpenAI(
+        api_key=settings.deepseek_api_key,
+        base_url="https://api.deepseek.com",
+    )
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.post(_DEEPSEEK_URL, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+    try:
+        response = await client.chat.completions.create(
+            model=settings.deepseek_model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an empathetic interview coach. Provide one concise, actionable tip based on the prompt."
+                    f" Maintain a {tone} tone.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=120,
+            temperature=0.6,
+        )
 
-    completion = data.get("choices", [{}])[0].get("text")
-    if not completion:
+        completion = response.choices[0].message.content
+        if not completion:
+            return _fallback_response(prompt, tone)
+        return completion.strip()
+    except Exception:
         return _fallback_response(prompt, tone)
-    return completion.strip()
 
 
 def _fallback_response(prompt: str, tone: str) -> str:
