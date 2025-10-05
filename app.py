@@ -11,7 +11,7 @@ Supported platforms:
 - Generic WSGI servers
 """
 
-from interview_prep_backend.main import app
+from src.interview_prep_backend.main import app
 
 # For WSGI servers (Gunicorn, etc.)
 # The app variable is automatically discovered
