@@ -2,41 +2,49 @@ from __future__ import annotations
 
 from typing import Optional
 
-from openai import AsyncOpenAI
+import google.generativeai as genai
 
 from interview_prep_backend.config import get_settings
 
 
 async def generate_coaching_line(prompt: str, *, tone: str = "supportive") -> str:
     settings = get_settings()
-    if not settings.enable_external_apis or not settings.deepseek_api_key:
+    if not settings.enable_external_apis or not settings.gemini_api_key:
         return _fallback_response(prompt, tone)
 
-    client = AsyncOpenAI(
-        api_key=settings.deepseek_api_key,
-        base_url="https://api.deepseek.com",
-    )
+    # Configure Gemini
+    genai.configure(api_key=settings.gemini_api_key)
+    model = genai.GenerativeModel(settings.gemini_model)
 
     try:
-        response = await client.chat.completions.create(
-            model=settings.deepseek_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an empathetic interview coach. Provide one concise, actionable tip based on the prompt."
-                    f" Maintain a {tone} tone.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=120,
-            temperature=0.6,
+        # Build system instruction
+        system_instruction = (
+            f"You are an empathetic interview coach. "
+            f"Provide one concise, actionable tip based on the user's question. "
+            f"Maintain a {tone} tone."
+        )
+        
+        # Combine system instruction with user prompt
+        full_prompt = f"{system_instruction}\n\nUser question: {prompt}"
+        
+        # Generate response
+        response = await model.generate_content_async(
+            full_prompt,
+            generation_config=genai.types.GenerationConfig(
+                max_output_tokens=120,
+                temperature=0.6,
+            ),
         )
 
-        completion = response.choices[0].message.content
+        completion = response.text
         if not completion:
             return _fallback_response(prompt, tone)
         return completion.strip()
-    except Exception:
+    except Exception as e:
+        # Log error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Gemini API error: {e}")
         return _fallback_response(prompt, tone)
 
 
